@@ -136,6 +136,10 @@ class Merb < Thor
       end
     end
     
+    desc 'update REPOSITORY_URL', 'Update a git repository from ./src'
+    alias :update :clone
+    
+    
     # class Clone < Source
     #   
     #   desc 'merb', 'Clone extlib, merb-core and merb-more from git'
@@ -182,11 +186,6 @@ class Merb < Thor
       
       # desc 'datamapper', 'Install extlib, dm-core and dm-more'
       # install_shortcut :datamapper, %w[extlib dm-core dm-more]
-      
-    end
-    
-    desc 'update GEM_NAME', 'Update rubygem source from git'
-    def update(name)
       
     end
     
