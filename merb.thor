@@ -16,10 +16,16 @@ module MerbThorHelper
   
   def source_dir
     @_source_dir  ||= File.join(working_dir, 'src')
+    create_if_missing(@_source_dir)
+    @_source_dir
   end
   
   def gem_dir
     File.directory?(working_dir) ? File.join(working_dir, 'gems') : nil
+  end
+  
+  def create_if_missing(path)
+    FileUtils.mkdir(path) unless File.exists?(path)
   end
   
 end
@@ -32,10 +38,20 @@ class Merb < Thor
   class GemPathMissing < Exception
   end
   
+
   class GemInstallError < Exception
   end
   
   class GemUninstallError < Exception
+  end
+
+  class Tasks < Thor
+    
+    desc "uninstall", "uninstall Merb's thor tasks"
+    def uninstall
+      `thor uninstall merb.thor`
+    end
+
   end
     
   class Source < Thor
@@ -85,17 +101,51 @@ class Merb < Thor
     
     # Tasks
     
-    desc 'clone REPOSITORY', 'Clone a git repository into ./src'
-    def clone(repository)
+    desc 'clone REPOSITORY_URL', 'Clone a git repository into ./src'
+    def clone(repository_url)
+      repository_name = repository_url[/([\w+|-]+)\.git/u, 1]
+      local_repo_path =  "#{source_dir}/#{repository_name}"
       
+      if File.directory?(local_repo_path)
+        puts "\n#{repository_name} repository exists, updating or branching instead of cloning..."
+        FileUtils.cd(local_repo_path) do
+       
+          # to avoid conflicts we need to set a remote branch for non official repos
+          #
+          existing_repos = `git remote -v`.split("\n").map{|branch| branch.split(/\s+/)}
+          origin_repo_url     = existing_repos.detect{|r| r.first == "origin"}.last
+        
+          if repository_url == origin_repo_url
+            system %{
+              git fetch
+              git checkout master
+              git rebase origin/master
+            }
+          # update and switch to the branch
+          elsif existing_repos.map{|r| r.last}.include?(repository_url)
+            branch_name = repository_url[/.com\/+?(.+)\/.+\.git/u, 1]
+            print "switching to remote branch: #{branch_name}\n"
+            `git fetch #{branch_name}`
+            `git checkout #{branch_name}/master`
+          
+          else
+            # create a new remote branch
+            branch_name = repository_url[/.com\/+?(.+)\/.+\.git/u, 1]
+            print "Add a new remote branch: #{branch_name}\n"
+            `git remote add -f #{branch_name} #{repository_url}`
+            `git checkout #{branch_name}/master`
+          end
+        end
+      else
+        FileUtils.cd(source_dir) do
+          puts "\nCloning #{repository_name} repository from #{repository_url}..."
+          system("git clone --depth=1 #{repository_url} ")
+        end
+      end
     end
     
-    # class Clone < Source
-    #   
-    #   desc 'merb', 'Clone extlib, merb-core and merb-more from git'
-    #   clone_shortcut :merb, {}
-    #   
-    # end
+    desc 'update REPOSITORY_URL', 'Update a git repository from ./src'
+    alias :update :clone
     
     # Install a particular gem from source. 
     #
@@ -141,12 +191,10 @@ class Merb < Thor
     
     desc 'update GEM_NAME', 'Update rubygem source from git'
     def update(name)
-      
     end
     
     desc 'refresh', 'Pull fresh copies of all source gems and install them'
     def refresh
-      
     end
 
   end
