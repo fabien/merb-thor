@@ -157,10 +157,6 @@ class Merb < Thor
       puts "Failed to install #{name} (#{e.message})"
     end
     
-    desc 'update GEM_NAME', 'Update rubygem source from git'
-    def update(name)
-    end
-    
     desc 'refresh', 'Pull fresh copies of all source gems and install them'
     def refresh
     end
