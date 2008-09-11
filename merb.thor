@@ -162,7 +162,7 @@ class Merb < Thor
     
     include MerbThorHelper
     
-    # Install the basic Merb gems and their dependencies.
+    # Install a gem and its dependencies.
     #
     # If a local ./gems dir is found, or --merb-root is given
     # the gems will be installed locally into that directory.
@@ -206,8 +206,8 @@ class Merb < Thor
     # that has C extensions - which need to be recompiled for the target
     # deployment platform.
     
-    desc 'deploy', 'Recreate any binary gems on the target deployment platform'
-    def deploy
+    desc 'redeploy', 'Recreate any binary gems on the target deployment platform'
+    def redeploy
       require 'tempfile' # for 
       if File.directory?(specs_dir = File.join(gem_dir, 'specifications')) &&
         File.directory?(cache_dir = File.join(gem_dir, 'cache'))
