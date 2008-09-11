@@ -147,6 +147,11 @@ class Merb < Thor
     desc 'update REPOSITORY_URL', 'Update a git repository from ./src'
     alias :update :clone
     
+    desc 'refresh', 'Pull fresh copies of all source gems and install them'
+    def refresh
+      source_dir
+    end
+    
     # Install a particular gem from source. 
     #
     # If a local ./gems dir is found, or --merb-root is given
@@ -187,14 +192,6 @@ class Merb < Thor
       # desc 'datamapper', 'Install extlib, dm-core and dm-more'
       # install_shortcut :datamapper, %w[extlib dm-core dm-more]
       
-    end
-    
-    desc 'update GEM_NAME', 'Update rubygem source from git'
-    def update(name)
-    end
-    
-    desc 'refresh', 'Pull fresh copies of all source gems and install them'
-    def refresh
     end
 
   end
