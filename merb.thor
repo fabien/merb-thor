@@ -47,59 +47,42 @@ class Merb < Thor
 
   class Tasks < Thor
     
-    desc "uninstall", "uninstall Merb's thor tasks"
+    desc "uninstall", "Uninstall Merb's thor tasks"
     def uninstall
       `thor uninstall merb.thor`
     end
 
   end
+  
+  desc 'edge', 'Install extlib, merb-core and merb-more from git HEAD'
+  method_options "--merb-root" => :optional
+  def edge
+  end
+  
+  class Edge < Thor
+    
+    include MerbThorHelper
+    
+    desc 'core', 'Install extlib and merb-core from git HEAD'
+    method_options "--merb-root" => :optional
+    def core
+    end
+    
+    desc 'more', 'Install merb-more from git HEAD'
+    method_options "--merb-root" => :optional
+    def more
+    end
+    
+    desc 'plugins', 'Install merb-plugins from git HEAD'
+    method_options "--merb-root" => :optional
+    def plugins
+    end
+    
+  end
     
   class Source < Thor
     
     include MerbThorHelper
-    
-    class << self
-    
-      def clone_shortcut(name, repos)
-        define_method(name) do
-          puts name
-        end
-      end
-    
-      def install_shortcut(name, gems)
-        method_options "--merb-root" => :optional
-        define_method(name) do
-          begin
-            gems.each do |name|
-              puts "Installing #{name}..."
-              gem_src_dir = File.join(source_dir, name)
-              Merb.install_gem_from_src(gem_src_dir, gem_dir)
-            end
-          rescue Merb::SourcePathMissing
-            puts "Missing rubygem source path: #{gem_src_dir}"
-          rescue Merb::GemPathMissing
-            puts "Missing rubygems path: #{gem_dir}"
-          rescue => e
-            puts "Failed to install Merb (#{e.message})"
-          end
-        end
-      end
-    
-      def update_shortcut(name, gems)
-        define_method(name) do
-          puts name
-        end
-      end
-    
-      def refresh_shortcut(name, gems)
-        define_method(name) do
-          puts name
-        end
-      end
-    
-    end
-    
-    # Tasks
     
     desc 'clone REPOSITORY_URL', 'Clone a git repository into ./src'
     def clone(repository_url)
@@ -172,21 +155,6 @@ class Merb < Thor
       puts "Missing rubygems path: #{gem_dir}"
     rescue => e
       puts "Failed to install #{name} (#{e.message})"
-    end
-    
-    class Install < Source
-      
-      # Install the basic Merb gems and their dependencies.
-      #
-      # If a local ./gems dir is found, or --merb-root is given
-      # the gems will be installed locally into that directory.
-      
-      desc 'merb', 'Install extlib, merb-core, and merb-more from (git) source'
-      install_shortcut :merb, %w[extlib merb-core merb-more]
-      
-      # desc 'datamapper', 'Install extlib, dm-core and dm-more'
-      # install_shortcut :datamapper, %w[extlib dm-core dm-more]
-      
     end
     
     desc 'update GEM_NAME', 'Update rubygem source from git'
