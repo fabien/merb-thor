@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 require 'rubygems'
 require 'rubygems/dependency_installer'
+require 'rubygems/uninstaller'
 require 'thor'
 require 'fileutils'
 require 'yaml'
@@ -29,6 +30,12 @@ class Merb < Thor
   end
   
   class GemPathMissing < Exception
+  end
+  
+  class GemInstallError < Exception
+  end
+  
+  class GemUninstallError < Exception
   end
     
   class Source < Thor
@@ -137,25 +144,11 @@ class Merb < Thor
       
     end
     
-    # class Update < Source
-    #   
-    #   desc 'merb', 'Update Merb rubygem sources from git'
-    #   update_shortcut :merb, %w[extlib merb-core merb-more]
-    #   
-    # end
-    
     desc 'refresh', 'Pull fresh copies of all source gems and install them'
     def refresh
       
     end
-    
-    # class Refresh < Source
-    #   
-    #   desc 'merb', 'Pull fresh copies of extlib, merb-core, and merb-more install them'
-    #   refresh_shortcut :merb, %w[extlib merb-core merb-more]
-    #   
-    # end
-    
+
   end
   
   class Gems < Thor
@@ -177,26 +170,117 @@ class Merb < Thor
     method_options "--version"   => :optional, 
                    "--merb-root" => :optional
     def install(name)
-      puts "Installing #{name}"
+      puts "Installing #{name}..."
       opts = {}
-      opts[:version] = options[:version] if options[:version]
+      opts[:version] = options[:version]
       opts[:install_dir] = gem_dir if gem_dir
       Merb.install_gem(name, opts)
     rescue => e
       puts "Failed to install #{name} (#{e.message})"
     end
     
+    # Update a gem and its dependencies.
+    #
+    # If a local ./gems dir is found, or --merb-root is given
+    # the gems will be installed locally into that directory.
+    #
+    # Examples:
+    #
+    # thor merb:gems:update merb-core
+    # thor merb:gems:update merb-core --merb-root ./path/to/your/app
+    
     desc 'update GEM_NAME', 'Update a gem from rubygems'
+    method_options "--merb-root" => :optional
     def update(name)
+      puts "Updating #{name}..."
+      opts = {}
+      if gem_dir &&
+        (gemspec_path = Dir[File.join(gem_dir, 'specifications', "#{name}-*.gemspec")].last)
+        gemspec = Gem::Specification.load(gemspec_path)
+        opts[:version] = Gem::Requirement.new [">=#{gemspec.version}"]
+        opts[:install_dir] = gem_dir
+      end
+      Merb.install_gem(name, opts)
+    rescue => e
+      puts "Failed to update #{name} (#{e.message})"
     end
     
-    desc 'wipe', 'Uninstall all RubyGems related to Merb'
-    def wipe
+    # Uninstall a gem - ignores dependencies.
+    #
+    # If a local ./gems dir is found, or --merb-root is given
+    # the gems will be installed locally into that directory.
+    #
+    # Examples:
+    #
+    # thor merb:gems:uninstall merb-core
+    # thor merb:gems:uninstall merb-core --all
+    # thor merb:gems:uninstall merb-core --version 0.9.7
+    # thor merb:gems:uninstall merb-core --merb-root ./path/to/your/app
+    
+    desc 'install GEM_NAME', 'Install a gem from rubygems'
+    desc 'uninstall GEM_NAME', 'Uninstall a gem'
+    method_options "--version"   => :optional, 
+                   "--merb-root" => :optional,
+                   "--all" => :boolean
+    def uninstall(name)
+      puts "Uninstalling #{name}..."
+      opts = {}
+      opts[:ignore] = true
+      opts[:all] = options[:all]
+      opts[:executables] = true
+      opts[:version] = options[:version]
+      opts[:install_dir] = gem_dir if gem_dir
+      Merb.uninstall_gem(name, opts)
+    rescue => e
+      puts "Failed to uninstall #{name} (#{e.message})"  
     end
+    
+    # Completely remove a gem - ignores dependencies.
+    #
+    # If a local ./gems dir is found, or --merb-root is given
+    # the gems will be installed locally into that directory.
+    #
+    # Examples:
+    #
+    # thor merb:gems:wipe merb-core
+    # thor merb:gems:wipe merb-core --merb-root ./path/to/your/app
+    
+    desc 'wipe GEM_NAME', 'Remove a gem completely'
+    method_options "--merb-root" => :optional
+    def wipe(name)
+      puts "Wiping #{name}..."
+      opts = {}
+      opts[:ignore] = true
+      opts[:all] = true
+      opts[:executables] = true
+      opts[:install_dir] = gem_dir if gem_dir
+      Merb.uninstall_gem(name, opts)
+    rescue => e
+      puts "Failed to wipe #{name} (#{e.message})"  
+    end
+    
+    # Remove a gem then install a fresh version.
+    #
+    # If a local ./gems dir is found, or --merb-root is given
+    # the gems will be installed locally into that directory.
+    #
+    # Examples:
+    #
+    # thor merb:gems:refresh merb-core
+    # thor merb:gems:refresh merb-core --version 0.9.7
+    # thor merb:gems:refresh merb-core --merb-root ./path/to/your/app
 
-    # desc 'refresh', 'Pull fresh copies of Merb and refresh all the gems'
-    # def refresh
-    # end
+    desc 'refresh GEM_NAME', 'Wipe then install a gem'
+    method_options "--version"   => :optional,
+                   "--merb-root" => :optional
+    def refresh(name)
+      begin
+        self.wipe(name)
+      rescue Merb::GemUninstallError
+        puts "The gem '#{name}' wasn't installed before."
+      end
+      self.install(name)
+    end
     
     # This task should be executed as part of a deployment setup, where
     # the deployment system runs this after the app has been installed.
@@ -228,29 +312,9 @@ class Merb < Thor
       end
     end
     
-    class Bundle < Gems
-      
-      # desc 'merb', 'Bundle extlib, merb-core, and merb-more from rubygems'
-      # method_options "--merb-root" => :optional
-      # def merb
-      #   options = {}
-      #   options[:install_dir] = gem_dir if gem_dir
-      #   %w[extlib merb-core merb-more].each do |name|
-      #     p options
-      #     # Merb.install_gem_from_src(gem_src_dir, gem_dir)
-      #     
-      #   end
-      # end
-      
-    end
-    
   end
   
   class << self
-    
-    # def components
-    #   @_components ||= %w[extlib merb-core merb-more]
-    # end
     
     # Default Git repositories.
     def repos
@@ -259,8 +323,8 @@ class Merb < Thor
         'merb-more'     => "git://github.com/wycats/merb-more.git",
         'merb-plugins'  => "git://github.com/wycats/merb-plugins.git",
         'extlib'        => "git://github.com/sam/extlib.git",
-        'dm-core'       => "http://github.com/sam/dm-core.git",
-        'dm-more'       => "http://github.com/sam/dm-more.git"
+        'dm-core'       => "git://github.com/sam/dm-core.git",
+        'dm-more'       => "git://github.com/sam/dm-more.git"
       }
     end
     
@@ -277,7 +341,12 @@ class Merb < Thor
         exception = e
       rescue Gem::GemNotFoundException => e
         puts "Locating #{gem} in local gem path cache..."
-        spec = version ? Gem.source_index.find_name(gem, "= #{version}").first : Gem.source_index.find_name(gem).sort_by { |g| g.version }.last
+        spec = if version
+          version = Gem::Requirement.new ["= #{version}"] unless version.is_a?(Gem::Requirement)
+          Gem.source_index.find_name(gem, version).first
+        else
+          Gem.source_index.find_name(gem).sort_by { |g| g.version }.last
+        end
         if spec && File.exists?(gem_file = "#{spec.installation_path}/cache/#{spec.full_name}.gem")
           installer.install gem_file
         end
@@ -331,6 +400,18 @@ class Merb < Thor
         end
       end
       raise Merb::GemInstallError, "No Rakefile found for #{gem_name}"
+    end
+    
+    # Uninstall a gem.
+    def uninstall_gem(gem, options = {})
+      if options[:version] && !options[:version].is_a?(Gem::Requirement)
+        options[:version] = Gem::Requirement.new ["= #{version}"]
+      end
+      begin
+        Gem::Uninstaller.new(gem, options).uninstall
+      rescue => e
+        raise GemUninstallError, "Failed to uninstall #{gem}"
+      end
     end
     
     # Will prepend sudo on a suitable platform.
