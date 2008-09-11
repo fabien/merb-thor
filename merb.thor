@@ -45,15 +45,6 @@ class Merb < Thor
   class GemUninstallError < Exception
   end
 
-  class Tasks < Thor
-    
-    desc "uninstall", "Uninstall Merb's thor tasks"
-    def uninstall
-      `thor uninstall merb.thor`
-    end
-
-  end
-  
   desc 'edge', 'Install extlib, merb-core and merb-more from git HEAD'
   method_options "--merb-root" => :optional
   def edge
@@ -434,6 +425,15 @@ class Merb < Thor
       end
     end
     
+  end
+  
+  class Tasks < Thor
+    
+    desc "uninstall", "Uninstall Merb's thor tasks"
+    def uninstall
+      `thor uninstall merb.thor`
+    end
+
   end
   
 end
