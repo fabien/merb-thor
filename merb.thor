@@ -102,11 +102,9 @@ TEXT
 end
 
 # TODO
-# - add ensure_local_bin_for('thor') once it becomes a dependency of merb-core
 # - a task to figure out an app's dependencies
 # - pulling a specific UUID/Tag (gitspec hash) with clone/update
 # - a 'deploy' task (in addition to 'redeploy' ?)
-# - merb-gen should generate ./gems
 # - eventually take a --orm option for the 'merb-stack' type of tasks
 
 class Merb < Thor
