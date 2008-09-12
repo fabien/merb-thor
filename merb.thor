@@ -83,6 +83,7 @@ module MerbThorHelper
 require 'rubygems'
 
 if local_gem_dir = File.join(File.dirname(__FILE__), '..', 'gems')
+  $BUNDLE = true
   Gem.clear_paths; Gem.path.unshift(local_gem_dir)
 end
 
@@ -166,7 +167,7 @@ class Merb < Thor
     desc 'core', 'Install extlib and merb-core from git HEAD'
     method_options "--merb-root" => :optional
     def core
-      refresh_from_gems 'thor', 'extlib', 'merb-core'
+      refresh_from_gems 'extlib', 'merb-core'
       ensure_local_bin_for('merb-core', 'rake', 'rspec', 'thor')
     end
     
@@ -255,7 +256,7 @@ class Merb < Thor
                    "--sources"   => :optional,
                    "--install"   => :boolean
     def core
-      refresh_from_source 'thor', 'extlib', 'merb-core'
+      refresh_from_source 'extlib', 'merb-core'
       ensure_local_bin_for('merb-core', 'rake', 'rspec', 'thor')
     end
     
