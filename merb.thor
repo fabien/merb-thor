@@ -30,6 +30,12 @@ module MerbThorHelper
   
 end
 
+# TODO
+# - a task to figure out an app's dependencies
+# - pulling a specific UUID/Tag (gitspec hash) with clone/update
+# - copy gem bin wrappers for Merb components to ./bin (bundled apps)
+# - a 'deploy' task (in addition to 'redeploy' ?)
+
 class Merb < Thor
   
   class SourcePathMissing < Exception
@@ -43,8 +49,88 @@ class Merb < Thor
   
   class GemUninstallError < Exception
   end
+  
+  # Install a Merb stack from stable RubyForge gems. Optionally install a 
+  # suitable Rack adapter/server when setting --adapter to one of the 
+  # following: mongrel, emongrel, thin or ebb.
+  
+  desc 'stable', 'Install extlib, merb-core and merb-more from rubygems'
+  method_options "--merb-root" => :optional,
+                 "--adapter"   => :optional
+  def stable
+    adapters = %w[mongrel emongrel thin ebb]
+    stable = Stable.new
+    stable.options = options
+    if stable.core && stable.more
+      puts "Installed extlib, merb-core and merb-more"
+      if options[:adapter] && adapters.include?(options[:adapter]) &&
+        stable.refresh_from_gems(options[:adapter])
+        puts "Installed #{options[:adapter]}"
+      elsif options[:adapter]
+        puts "Please specify one of the following adapters: #{adapters.join(' ')}"
+      end
+    end  
+  end  
 
-  # Gets latest Merb versions from git - optionally installs them.
+  class Stable < Thor
+
+    # The Stable tasks deal with known -stable- gems; available
+    # as shortcuts to Merb and DataMapper gems.
+    #
+    # These are pulled from rubyforge and installed into into the 
+    # desired gems dir (either system-wide or into the application's 
+    # gems directory).
+    
+    include MerbThorHelper
+    
+    # Gets latest gem versions from RubyForge and installs them.
+    #
+    # Examples:
+    #
+    # thor merb:edge:core
+    # thor merb:edge:core --merb-root ./path/to/your/app
+    # thor merb:edge:core --sources ./path/to/sources.yml
+    
+    desc 'core', 'Install extlib and merb-core from git HEAD'
+    method_options "--merb-root" => :optional
+    def core
+      refresh_from_gems 'extlib', 'merb-core'
+    end
+    
+    desc 'more', 'Install merb-more from rubygems'
+    method_options "--merb-root" => :optional
+    def more
+      refresh_from_gems 'merb-more'
+    end
+    
+    desc 'plugins', 'Install merb-plugins from rubygems'
+    method_options "--merb-root" => :optional
+    def plugins
+      refresh_from_gems 'merb-plugins'
+    end
+    
+    desc 'dm_core', 'Install dm-core from rubygems'
+    method_options "--merb-root" => :optional
+    def dm_core
+      refresh_from_gems 'extlib', 'merb-core'
+    end
+    
+    desc 'dm_more', 'Install dm-more from rubygems'
+    method_options "--merb-root" => :optional
+    def dm_more
+      refresh_from_gems 'extlib', 'merb-core'
+    end
+    
+    # Pull from RubyForge and install.
+    def refresh_from_gems(*components)
+      gems = Gems.new
+      gems.options = options
+      components.all? { |name| gems.install(name) rescue false }
+    end
+    
+  end
+
+  # Retrieve latest Merb versions from git and optionally install them.
   #
   # Note: the --sources option takes a path to a YAML file
   # with a regular Hash mapping gem names to git urls.
@@ -56,7 +142,7 @@ class Merb < Thor
   # thor merb:edge --merb-root ./path/to/your/app
   # thor merb:edge --sources ./path/to/sources.yml
 
-  desc 'edge', 'Update extlib, merb-core and merb-more from git HEAD'
+  desc 'edge', 'Install extlib, merb-core and merb-more from git HEAD'
   method_options "--merb-root" => :optional, 
                  "--sources"   => :optional,
                  "--install"   => :boolean
@@ -68,12 +154,20 @@ class Merb < Thor
 
   class Edge < Thor
     
+    # The Edge tasks deal with known gems from the bleeding edge; available
+    # as shortcuts to Merb and DataMapper gems.
+    #
+    # These are pulled from git and optionally installed into into the 
+    # desired gems dir (either system-wide or into the application's 
+    # gems directory).
+    
     include MerbThorHelper
     
     # Gets latest gem versions from git - optionally installs them.
     #
     # Note: the --sources option takes a path to a YAML file
-    # with a regular Hash mapping gem names to git urls.
+    # with a regular Hash mapping gem names to git urls,
+    # allowing pulling forks of the official repositories.
     #
     # Examples:
     #
@@ -87,7 +181,7 @@ class Merb < Thor
                    "--sources"   => :optional,
                    "--install"   => :boolean
     def core
-      refresh_from_edge 'extlib', 'merb-core'
+      refresh_from_source 'extlib', 'merb-core'
     end
     
     desc 'more', 'Update merb-more from git HEAD'
@@ -95,7 +189,7 @@ class Merb < Thor
                    "--sources"   => :optional,
                    "--install"   => :boolean
     def more
-      refresh_from_edge 'merb-more'
+      refresh_from_source 'merb-more'
     end
     
     desc 'plugins', 'Update merb-plugins from git HEAD'
@@ -103,12 +197,29 @@ class Merb < Thor
                    "--sources"   => :optional,
                    "--install"   => :boolean
     def plugins
-      refresh_from_edge 'merb-plugins'
+      refresh_from_source 'merb-plugins'
+    end
+    
+    desc 'dm_core', 'Update dm-core from git HEAD'
+    method_options "--merb-root" => :optional, 
+                   "--sources"   => :optional,
+                   "--install"   => :boolean
+    def dm_core
+      refresh_from_source 'extlib', 'merb-core'
+    end
+    
+    desc 'dm_more', 'Update dm-more from git HEAD'
+    method_options "--merb-root" => :optional, 
+                   "--sources"   => :optional,
+                   "--install"   => :boolean
+    def dm_more
+      refresh_from_source 'extlib', 'merb-core'
     end
     
     private
     
-    def refresh_from_edge(*components)
+    # Pull from git and optionally install the resulting gems.
+    def refresh_from_source(*components)
       source = Source.new
       source.options = options
       components.all? do |name|
@@ -133,6 +244,33 @@ class Merb < Thor
     # or into the application's gems directory).
     
     include MerbThorHelper
+    
+    # Install a particular gem from source. 
+    #
+    # If a local ./gems dir is found, or --merb-root is given
+    # the gems will be installed locally into that directory.
+    #
+    # Examples:
+    # 
+    # thor merb:source:install merb-core
+    # thor merb:source:install merb-more
+    # thor merb:source:install merb-more/merb-slices
+    # thor merb:source:install merb-plugins/merb_helpers
+    # thor merb:source:install merb-core --merb-root ./path/to/your/app
+    
+    desc 'install GEM_NAME', 'Install a rubygem from (git) source'
+    method_options "--merb-root" => :optional
+    def install(name)
+      puts "Installing #{name}..."
+      gem_src_dir = File.join(source_dir, name)
+      Merb.install_gem_from_src(gem_src_dir, gem_dir)
+    rescue Merb::SourcePathMissing
+      puts "Missing rubygem source path: #{gem_src_dir}"
+    rescue Merb::GemPathMissing
+      puts "Missing rubygems path: #{gem_dir}"
+    rescue => e
+      puts "Failed to install #{name} (#{e.message})"
+    end
     
     # Clone a git repository into ./src.
     
@@ -180,12 +318,12 @@ class Merb < Thor
     
     # Update a specific gem source directory from git.
     
-    desc 'update REPOSITORY_URL', 'Update a git repository from ./src'
+    desc 'update REPOSITORY_URL', 'Update a git repository in ./src'
     alias :update :clone
     
     # Update all gem sources from git - based on the current branch.
     
-    desc 'refresh', 'Pull fresh copies of all source gems and install them'
+    desc 'refresh', 'Pull fresh copies of all source gems'
     def refresh
       repos = Dir["#{source_dir}/*"]
       repos.each do |repo|
@@ -197,33 +335,6 @@ class Merb < Thor
         end
       end
     end
-    
-    # Install a particular gem from source. 
-    #
-    # If a local ./gems dir is found, or --merb-root is given
-    # the gems will be installed locally into that directory.
-    #
-    # Examples:
-    # 
-    # thor merb:source:install merb-core
-    # thor merb:source:install merb-more
-    # thor merb:source:install merb-more/merb-slices
-    # thor merb:source:install merb-plugins/merb_helpers
-    # thor merb:source:install merb-core --merb-root ./path/to/your/app
-    
-    desc 'install GEM_NAME', 'Install a rubygem from (git) source'
-    method_options "--merb-root" => :optional
-    def install(name)
-      puts "Installing #{name}..."
-      gem_src_dir = File.join(source_dir, name)
-      Merb.install_gem_from_src(gem_src_dir, gem_dir)
-    rescue Merb::SourcePathMissing
-      puts "Missing rubygem source path: #{gem_src_dir}"
-    rescue Merb::GemPathMissing
-      puts "Missing rubygems path: #{gem_dir}"
-    rescue => e
-      puts "Failed to install #{name} (#{e.message})"
-    end
 
   end
   
@@ -231,7 +342,9 @@ class Merb < Thor
     
     # The Gems tasks deal directly with rubygems, either through remotely
     # available sources (rubyforge for example) or by searching the
-    # system-wide gem cache for matching gems.
+    # system-wide gem cache for matching gems. The gems are installed from 
+    # there into the desired gems dir (either system-wide or into the 
+    # application's gems directory).
     
     include MerbThorHelper
     
@@ -289,10 +402,11 @@ class Merb < Thor
     def update(name)
       puts "Updating #{name}..."
       opts = {}
-      if gem_dir &&
-        (gemspec_path = Dir[File.join(gem_dir, 'specifications', "#{name}-*.gemspec")].last)
-        gemspec = Gem::Specification.load(gemspec_path)
-        opts[:version] = Gem::Requirement.new [">=#{gemspec.version}"]
+      if gem_dir
+        if gemspec_path = Dir[File.join(gem_dir, 'specifications', "#{name}-*.gemspec")].last
+          gemspec = Gem::Specification.load(gemspec_path)
+          opts[:version] = Gem::Requirement.new [">#{gemspec.version}"]
+        end
         opts[:install_dir] = gem_dir
         opts[:cache] = options[:cache]
       end
@@ -355,29 +469,6 @@ class Merb < Thor
       puts "Failed to wipe #{name} (#{e.message})"  
     end
     
-    # Remove a gem then install a fresh version.
-    #
-    # If a local ./gems dir is found, or --merb-root is given
-    # the gems will be installed locally into that directory.
-    #
-    # Examples:
-    #
-    # thor merb:gems:refresh merb-core
-    # thor merb:gems:refresh merb-core --version 0.9.7
-    # thor merb:gems:refresh merb-core --merb-root ./path/to/your/app
-
-    desc 'refresh GEM_NAME', 'Wipe then install a gem'
-    method_options "--version"   => :optional,
-                   "--merb-root" => :optional
-    def refresh(name)
-      begin
-        self.wipe(name)
-      rescue Merb::GemUninstallError
-        puts "The gem '#{name}' wasn't installed before."
-      end
-      self.install(name)
-    end
-    
     # This task should be executed as part of a deployment setup, where
     # the deployment system runs this after the app has been installed.
     # Usually triggered by Capistrano, God...
@@ -435,7 +526,8 @@ class Merb < Thor
     # Install a gem - looks remotely and local gem cache;
     # won't process rdoc or ri options.
     def install_gem(gem, options = {})
-      if options.delete(:cache)
+      from_cache = (options.key?(:cache) && options.delete(:cache))
+      if from_cache
         install_gem_from_cache(gem, options)
       else
         version = options.delete(:version)
@@ -447,8 +539,8 @@ class Merb < Thor
         rescue Gem::InstallError => e
           exception = e
         rescue Gem::GemNotFoundException => e
-          puts "Locating #{gem} in gem cache..."
-          if gem_file = find_gem_in_cache(gem, version)
+          if from_cache && gem_file = find_gem_in_cache(gem, version)
+            puts "Located #{gem} in gem cache..."
             installer.install gem_file
           else
             exception = e
@@ -473,8 +565,8 @@ class Merb < Thor
       installer = Gem::DependencyInstaller.new(options)
       exception = nil
       begin
-        puts "Locating #{gem} in gem cache..."
         if gem_file = find_gem_in_cache(gem, version)
+          puts "Located #{gem} in gem cache..."
           installer.install gem_file
         else
           raise Gem::InstallError, "Unknown gem #{gem}" 
