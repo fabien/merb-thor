@@ -21,7 +21,9 @@ module MerbThorHelper
   end
   
   def gem_dir
-    File.directory?(working_dir) ? File.join(working_dir, 'gems') : nil
+    if File.directory?(dir = File.join(working_dir, 'gems'))
+      dir
+    end
   end
   
   def create_if_missing(path)
@@ -35,6 +37,8 @@ end
 # - pulling a specific UUID/Tag (gitspec hash) with clone/update
 # - copy gem bin wrappers for Merb components to ./bin (bundled apps)
 # - a 'deploy' task (in addition to 'redeploy' ?)
+# - merb-gen should generate ./gems
+# - eventually take a --orm option for the 'merb-stack' type of tasks
 
 class Merb < Thor
   
@@ -525,14 +529,14 @@ class Merb < Thor
     
     # Install a gem - looks remotely and local gem cache;
     # won't process rdoc or ri options.
-    def install_gem(gem, options = {})
+    def install_gem(gem, options = {})     
       from_cache = (options.key?(:cache) && options.delete(:cache))
       if from_cache
         install_gem_from_cache(gem, options)
       else
         version = options.delete(:version)
         Gem.configuration.update_sources = false
-        installer = Gem::DependencyInstaller.new(options)
+        installer = Gem::DependencyInstaller.new(options.merge(:user_install => false))
         exception = nil
         begin
           installer.install gem, version
@@ -562,7 +566,7 @@ class Merb < Thor
     def install_gem_from_cache(gem, options = {})
       version = options.delete(:version)
       Gem.configuration.update_sources = false
-      installer = Gem::DependencyInstaller.new(options)
+      installer = Gem::DependencyInstaller.new(options.merge(:user_install => false))
       exception = nil
       begin
         if gem_file = find_gem_in_cache(gem, version)
