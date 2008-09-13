@@ -27,6 +27,7 @@ module MerbThorHelper
     gem_dir
   end
   
+  # If a local ./gems dir is found, return it.
   def gem_dir
     if File.directory?(dir = File.join(working_dir, 'gems'))
       dir
@@ -222,7 +223,8 @@ class Merb < Thor
   def edge
     edge = Edge.new
     edge.options = options
-    edge.core && edge.more
+    edge.core
+    edge.more
   end
 
   class Edge < Thor
@@ -688,12 +690,16 @@ class Merb < Thor
       gem_name = File.basename(gem_src_dir)
       gem_pkg_dir = File.expand_path(File.join(gem_src_dir, 'pkg'))
 
+      # We need to use local bin executables if available.
+      thor = which('thor')
+      rake = which('rake')
+
       # Handle pure Thor installation instead of Rake
       if File.exists?(File.join(gem_src_dir, 'Thorfile'))
         # Remove any existing packages.
         FileUtils.rm_rf(gem_pkg_dir) if File.directory?(gem_pkg_dir)
         # Create the package.
-        FileUtils.cd(gem_src_dir) { system("#{sudo}thor :package") }
+        FileUtils.cd(gem_src_dir) { system("#{thor} :package") }
         # Install the package using rubygems.
         if package = Dir[File.join(gem_pkg_dir, "#{gem_name}-*.gem")].last
           FileUtils.cd(File.dirname(package)) do
@@ -707,13 +713,13 @@ class Merb < Thor
       else
         # Clean and regenerate any subgems for meta gems.
         Dir[File.join(gem_src_dir, '*', 'Rakefile')].each do |rakefile|
-          FileUtils.cd(File.dirname(rakefile)) { system("#{sudo}rake clobber_package; #{sudo}rake package") }             
+          FileUtils.cd(File.dirname(rakefile)) { system("#{rake} clobber_package; #{rake} package") }             
         end
   
         # Handle the main gem install.
         if File.exists?(File.join(gem_src_dir, 'Rakefile'))
           # Remove any existing packages.
-          FileUtils.cd(gem_src_dir) { system("#{sudo}rake clobber_package") }
+          FileUtils.cd(gem_src_dir) { system("#{rake} clobber_package") }
           # Create the main gem pkg dir if it doesn't exist.
           FileUtils.mkdir_p(gem_pkg_dir) unless File.directory?(gem_pkg_dir)
           # Copy any subgems to the main gem pkg dir.
@@ -724,7 +730,7 @@ class Merb < Thor
           # Finally generate the main package and install it; subgems 
           # (dependencies) are local to the main package.
           FileUtils.cd(gem_src_dir) do 
-            system("#{sudo}rake package")
+            system("#{rake} package")
             if package = Dir[File.join(gem_pkg_dir, "#{gem_name}-*.gem")].last
               FileUtils.cd(File.dirname(package)) do
                 install_gem(File.basename(package), options.dup)
@@ -759,6 +765,15 @@ class Merb < Thor
       end
     end
     
+    # Use the local bin/* executables if available.
+    def which(executable)
+      if File.executable?(exec = File.join(Dir.pwd, 'bin', executable))
+        exec
+      else
+        executable
+      end
+    end
+    
     private
     
     def find_gem_in_cache(gem, version)
@@ -779,23 +794,28 @@ class Merb < Thor
     
     include MerbThorHelper
     
-    # Install Thor into the local gems dir, by copying it from the system-wide
-    # rubygems cache - which is OK since we needed it to run this task already.
+    # Install Thor, Rake and RSpec into the local gems dir, by copying it from 
+    # the system-wide rubygems cache - which is OK since we needed it to run 
+    # this task already.
+    #
+    # After this we don't need the system-wide rubygems anymore, as all required
+    # executables are available in the local ./bin directory.
+    #
+    # RSpec is needed here because source installs might fail when running
+    # rake tasks where spec/rake/spectask has been required.
     
-    desc 'setup', 'Install Thor in the local gems dir'
+    desc 'setup', 'Install Thor, Rake and RSpec in the local gems dir'
     method_options "--merb-root" => :optional
     def setup
-      if gem_dir
-        Merb.install_gem('thor', :cache => true, :install_dir => gem_dir)
-        ensure_local_bin_for('thor')
-      else
-        puts "No local gems directory found"
+      if $0 =~ /^(\.\/)?bin\/thor$/
+        puts "You cannot run the setup from #{$0} - try #{File.basename($0)} merb:tasks:setup instead"
+        return
       end
-    end
-    
-    desc "uninstall", "Uninstall Merb's thor tasks"
-    def uninstall
-      `thor uninstall merb.thor`
+      create_if_missing(File.join(working_dir, 'gems'))
+      Merb.install_gem('thor',  :cache => true, :install_dir => gem_dir)
+      Merb.install_gem('rake',  :cache => true, :install_dir => gem_dir)
+      Merb.install_gem('rspec', :cache => true, :install_dir => gem_dir)
+      ensure_local_bin_for('thor', 'rake', 'rspec')
     end
 
   end
