@@ -254,7 +254,7 @@ class Merb < Thor
                    "--sources"   => :optional,
                    "--install"   => :boolean
     def core
-      refresh_from_source 'extlib', 'merb-core'
+      refresh_from_source 'thor', 'extlib', 'merb-core'
       ensure_local_bin_for('merb-core', 'rake', 'rspec', 'thor')
     end
     
@@ -297,15 +297,9 @@ class Merb < Thor
     def refresh_from_source(*components)
       source = Source.new
       source.options = options
-      components.all? do |name|
-        if url = Merb.repos(options[:sources])[name]
-          source.clone(url)
-          source.install(name) if options[:install]
-          true
-        else
-          puts "No repository url found for '#{name}'"
-          false
-        end
+      components.each do |name|
+        source.clone(name)
+        source.install(name) if options[:install]
       end
     end
     
@@ -349,51 +343,69 @@ class Merb < Thor
       puts "Failed to install #{name} (#{e.message})"
     end
     
-    # Clone a git repository into ./src.
+    # Clone a git repository into ./src. The repository can be
+    # a direct git url or a known -named- repository.
+    # 
+    # Examples:
+    #
+    # thor merb:source:clone dm-core
+    # thor merb:source:clone dm-core --sources ./path/to/sources.yml
+    # thor merb:source:clone git://github.com/sam/dm-core.git
     
-    desc 'clone REPOSITORY_URL', 'Clone a git repository into ./src'
-    def clone(repository_url)
-      repository_name = repository_url[/([\w+|-]+)\.git/u, 1]
-      fork_name = repository_url[/.com\/+?(.+)\/.+\.git/u, 1]
-      local_repo_path =  "#{source_dir}/#{repository_name}"
+    desc 'clone REPOSITORY', 'Clone a git repository into ./src'
+    method_options "--sources" => :optional
+    def clone(repository)
+      if repository =~ /^git:\/\//
+        repository_url = repository
+      elsif url = Merb.repos(options[:sources])[repository]
+        repository_url = url
+      end
       
-      if File.directory?(local_repo_path)
-        puts "\n#{repository_name} repository exists, updating or branching instead of cloning..."
-        FileUtils.cd(local_repo_path) do
+      if repository_url
+        repository_name = repository_url[/([\w+|-]+)\.git/u, 1]
+        fork_name = repository_url[/.com\/+?(.+)\/.+\.git/u, 1]
+        local_repo_path =  "#{source_dir}/#{repository_name}"
+      
+        if File.directory?(local_repo_path)
+          puts "\n#{repository_name} repository exists, updating or branching instead of cloning..."
+          FileUtils.cd(local_repo_path) do
 
-          # to avoid conflicts we need to set a remote branch for non official repos
-          existing_repos  = `git remote -v`.split("\n").map{|branch| branch.split(/\s+/)}
-          origin_repo_url = existing_repos.detect{ |r| r.first == "origin" }.last
+            # to avoid conflicts we need to set a remote branch for non official repos
+            existing_repos  = `git remote -v`.split("\n").map{|branch| branch.split(/\s+/)}
+            origin_repo_url = existing_repos.detect{ |r| r.first == "origin" }.last
         
-          # pull from the original repository - no branching needed
-          if repository_url == origin_repo_url
-            puts "Pulling from #{repository_url}"            
-            system %{
-              git fetch
-              git checkout master
-              git rebase origin/master
-            }
-          # update and switch to a branch for a particular github fork
-          elsif existing_repos.map{ |r| r.last }.include?(repository_url)
-            puts "Switching to remote branch: #{fork_name}"
-            `git checkout -b #{fork_name} #{fork_name}/master`
-            `git rebase #{fork_name}/master`            
-          # create a new remote branch for a particular github fork 
-          else
-            puts "Add a new remote branch: #{fork_name}"
-            `git remote add -f #{fork_name} #{repository_url}`
-            `git checkout -b#{fork_name} #{fork_name}/master`
+            # pull from the original repository - no branching needed
+            if repository_url == origin_repo_url
+              puts "Pulling from #{repository_url}"            
+              system %{
+                git fetch
+                git checkout master
+                git rebase origin/master
+              }
+            # update and switch to a branch for a particular github fork
+            elsif existing_repos.map{ |r| r.last }.include?(repository_url)
+              puts "Switching to remote branch: #{fork_name}"
+              `git checkout -b #{fork_name} #{fork_name}/master`
+              `git rebase #{fork_name}/master`            
+            # create a new remote branch for a particular github fork 
+            else
+              puts "Add a new remote branch: #{fork_name}"
+              `git remote add -f #{fork_name} #{repository_url}`
+              `git checkout -b#{fork_name} #{fork_name}/master`
+            end
+          end
+        else
+          FileUtils.cd(source_dir) do
+            puts "\nCloning #{repository_name} repository from #{repository_url}..."
+            system("git clone --depth=1 #{repository_url} ")
           end
         end
       else
-        FileUtils.cd(source_dir) do
-          puts "\nCloning #{repository_name} repository from #{repository_url}..."
-          system("git clone --depth=1 #{repository_url} ")
-        end
+        puts "No valid repository url given"
       end
     end
     
-    # Update a specific gem source directory from git.
+    # Update a specific gem source directory from git. See #clone.
     
     desc 'update REPOSITORY_URL', 'Update a git repository in ./src'
     alias :update :clone
@@ -656,9 +668,6 @@ class Merb < Thor
         puts "Failed to install gem '#{gem}' (#{e.message})"
       end
       installer.installed_gems.each do |spec|
-        
-        # TODO
-        
         puts "Successfully installed #{spec.full_name}"
       end
     end
@@ -670,33 +679,52 @@ class Merb < Thor
   
       gem_name = File.basename(gem_src_dir)
       gem_pkg_dir = File.expand_path(File.join(gem_src_dir, 'pkg'))
-  
-      # Clean and regenerate any subgems for meta gems.
-      Dir[File.join(gem_src_dir, '*', 'Rakefile')].each do |rakefile|
-        FileUtils.cd(File.dirname(rakefile)) { system("#{sudo}rake clobber_package; #{sudo}rake package") }             
-      end
-  
-      # Handle the main gem install.
-      if File.exists?(File.join(gem_src_dir, 'Rakefile'))
+
+      # Handle pure Thor installation instead of Rake
+      if File.exists?(File.join(gem_src_dir, 'Thorfile'))
         # Remove any existing packages.
-        FileUtils.cd(gem_src_dir) { system("#{sudo}rake clobber_package") }
-        # Create the main gem pkg dir if it doesn't exist.
-        FileUtils.mkdir_p(gem_pkg_dir) unless File.directory?(gem_pkg_dir)
-        # Copy any subgems to the main gem pkg dir.
-        Dir[File.join(gem_src_dir, '**', 'pkg', '*.gem')].each do |subgem_pkg|
-          FileUtils.cp(subgem_pkg, gem_pkg_dir)
+        FileUtils.rm_rf(gem_pkg_dir) if File.directory?(gem_pkg_dir)
+        # Create the package.
+        FileUtils.cd(gem_src_dir) { system("#{sudo}thor :package") }
+        # Install the package using rubygems.
+        if package = Dir[File.join(gem_pkg_dir, "#{gem_name}-*.gem")].last
+          FileUtils.cd(File.dirname(package)) do
+            install_gem(File.basename(package), options.dup)
+            return 
+          end
+        else
+          raise Merb::GemInstallError, "No package found for #{gem_name}"
         end
+      # Handle standard installation through Rake
+      else
+        # Clean and regenerate any subgems for meta gems.
+        Dir[File.join(gem_src_dir, '*', 'Rakefile')].each do |rakefile|
+          FileUtils.cd(File.dirname(rakefile)) { system("#{sudo}rake clobber_package; #{sudo}rake package") }             
+        end
+  
+        # Handle the main gem install.
+        if File.exists?(File.join(gem_src_dir, 'Rakefile'))
+          # Remove any existing packages.
+          FileUtils.cd(gem_src_dir) { system("#{sudo}rake clobber_package") }
+          # Create the main gem pkg dir if it doesn't exist.
+          FileUtils.mkdir_p(gem_pkg_dir) unless File.directory?(gem_pkg_dir)
+          # Copy any subgems to the main gem pkg dir.
+          Dir[File.join(gem_src_dir, '**', 'pkg', '*.gem')].each do |subgem_pkg|
+            FileUtils.cp(subgem_pkg, gem_pkg_dir)
+          end
     
-        # Finally generate the main package and install it; subgems 
-        # (dependencies) are local to the main package.
-        FileUtils.cd(gem_src_dir) do 
-          system("#{sudo}rake package")
-          if package = Dir[File.join(gem_pkg_dir, "#{gem_name}-*.gem")].last
-            FileUtils.cd(File.dirname(package)) do
-              return install_gem(File.basename(package), options.dup)
+          # Finally generate the main package and install it; subgems 
+          # (dependencies) are local to the main package.
+          FileUtils.cd(gem_src_dir) do 
+            system("#{sudo}rake package")
+            if package = Dir[File.join(gem_pkg_dir, "#{gem_name}-*.gem")].last
+              FileUtils.cd(File.dirname(package)) do
+                install_gem(File.basename(package), options.dup)
+                return 
+              end
+            else
+              raise Merb::GemInstallError, "No package found for #{gem_name}"
             end
-          else
-            raise Merb::GemInstallError, "No package found for #{gem_name}"
           end
         end
       end
