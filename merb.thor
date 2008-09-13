@@ -319,6 +319,14 @@ class Merb < Thor
     # If a local ./gems dir is found, or --merb-root is given
     # the gems will be installed locally into that directory.
     #
+    # Note that this task doesn't retrieve any (new) source from git;
+    # To update and install you'd execute the following two tasks:
+    #
+    # thor merb:source:update merb-core
+    # thor merb:source:install merb-core
+    #
+    # Alternatively, look at merb:edge and merb:edge:* with --install.
+    #
     # Examples:
     # 
     # thor merb:source:install merb-core
@@ -507,7 +515,7 @@ class Merb < Thor
     # Uninstall a gem - ignores dependencies.
     #
     # If a local ./gems dir is found, or --merb-root is given
-    # the gems will be installed locally into that directory.
+    # the gems will be uninstalled locally from that directory.
     #
     # Examples:
     #
@@ -534,10 +542,10 @@ class Merb < Thor
       puts "Failed to uninstall #{name} (#{e.message})"  
     end
     
-    # Completely remove a gem - ignores dependencies.
+    # Completely remove a gem and all its versions - ignores dependencies.
     #
     # If a local ./gems dir is found, or --merb-root is given
-    # the gems will be installed locally into that directory.
+    # the gems will be uninstalled locally from that directory.
     #
     # Examples:
     #
